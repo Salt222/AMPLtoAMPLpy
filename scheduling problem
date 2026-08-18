@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+#Scheduling Problem
+ 
+from amplpy import AMPL
+ 
+ampl = AMPL()
+ 
+# 1. Define the model
+ampl.eval("""
+set FTshifts;   # 8A-4P, 12P-8P, 4P-12A
+set PTshifts;   # 8A-12P, 12P-4P, 4P-8P, 8P-12A
+ 
+var FTworker{FTshifts} integer >=0;
+var PTworker{PTshifts} integer >=0;
+ 
+param RequiredWorkers{PTshifts};
+param ConvertShifts{FTshifts,PTshifts};
+# Matrix with a value 1 where the FTshift overlaps with the PTshift
+ 
+param CostPerFT;   # $40*8
+param CostPerPT;   # $30*4
+ 
+minimize TotalCost: CostPerFT*sum{f in FTshifts} FTworker[f] + CostPerPT*sum{p in PTshifts} PTworker[p];
+subject to MinRequired{p in PTshifts}: sum{f in FTshifts}ConvertShifts[f,p]*FTworker[f] + PTworker[p] >= RequiredWorkers[p];
+subject to Ratio{p in PTshifts}: sum{f in FTshifts}ConvertShifts[f,p]*FTworker[f] >= 2*PTworker[p];
+""")
+ 
+# 2. Define the data (numbers) as a string.
+#    "data;" switches AMPL into data mode; "model;" switches back.
+ampl.eval("""
+data;
+ 
+set FTshifts := 8A4P 12P8P 4P12A;
+set PTshifts := 8A12P 12P4P 4P8P 8P12A;
+ 
+param RequiredWorkers :=
+8A12P 4
+12P4P 8
+4P8P 10
+8P12A 6;
+ 
+param ConvertShifts (tr): 8A4P 12P8P 4P12A :=
+8A12P 1 0 0
+12P4P 1 1 0
+4P8P  0 1 1
+8P12A 0 0 1;
+ 
+param CostPerFT := 480;   # $40*8
+param CostPerPT := 120;   # $30*4
+ 
+model;
+""")
+ 
+# 3. Choose a solver and solve.
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+assert ampl.get_value("solve_result") == "solved", "Solve did not succeed"
+ 
+# 4. Pull results back into Python
+ft = ampl.get_variable("FTworker").get_values().to_pandas()
+pt = ampl.get_variable("PTworker").get_values().to_pandas()
+total_cost = ampl.get_objective("TotalCost").value()
+ 
+print("\nFull-time workers by shift:")
+print(ft)
+print("\nPart-time workers by shift:")
+print(pt)
+ 
+n_ft = ft.iloc[:, 0].sum()
+n_pt = pt.iloc[:, 0].sum()
+print(f"\nHeadcount: {n_ft:.0f} full-time, {n_pt:.0f} part-time")
+print(f"Total cost: {total_cost:,.2f}")
+ 
+# Check the coverage actually delivered in each four-hour block against
+# what was required, since that is the point of the schedule.
+print("\nCoverage by block:")
+required = ampl.get_parameter("RequiredWorkers").get_values().to_pandas()
+convert = ampl.get_parameter("ConvertShifts").get_values().to_pandas()
+ 
+for p in ampl.get_set("PTshifts").members():
+    ft_cover = sum(
+        convert.loc[(f, p)].iloc[0] * ft.loc[f].iloc[0]
+        for f in ampl.get_set("FTshifts").members()
+    )
+    print(f"  {p:>6}: {ft_cover + pt.loc[p].iloc[0]:5.0f} staffed "
+          f"({ft_cover:.0f} FT + {pt.loc[p].iloc[0]:.0f} PT), "
+          f"{required.loc[p].iloc[0]:.0f} required")
+ 
+
