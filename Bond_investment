@@ -1,0 +1,78 @@
+#Bond Investment
+from amplpy import AMPL
+ 
+ampl = AMPL()
+ 
+#Define the model (structure) as a string and load it with eval()
+ampl.eval("""
+set Bonds;
+ 
+var x{i in Bonds};
+ 
+param ExpectedReturn{Bonds};
+param WorstCase{Bonds};
+param Duration{Bonds};
+ 
+param WorstCaseMin;
+param DurationMax;
+param AvailableFunds;
+param PercentageLimit;
+ 
+maximize Returns: sum{i in Bonds} ExpectedReturn[i]*x[i];
+subject to WorstCaseConst: sum{i in Bonds} WorstCase[i]*x[i] >= WorstCaseMin*sum{j in Bonds} x[j];
+subject to DurationConst: sum{i in Bonds} Duration[i]*x[i] <= DurationMax*sum{j in Bonds} x[j];
+subject to FundsConst: sum{i in Bonds} x[i] <= AvailableFunds;
+subject to PercentageConst {i in Bonds}: x[i] <= PercentageLimit * sum{j in Bonds} x[j];
+subject to NonNeg {i in Bonds}: x[i] >= 0;
+""")
+ 
+# 2. Define the data 
+ampl.eval("""
+data;
+ 
+set Bonds := Bond1 Bond2 Bond3 Bond4;
+ 
+param ExpectedReturn :=
+Bond1 13
+Bond2 8
+Bond3 12
+Bond4 14;
+ 
+param WorstCase :=
+Bond1 6
+Bond2 8
+Bond3 10
+Bond4 9;
+ 
+param Duration :=
+Bond1 3
+Bond2 4
+Bond3 7
+Bond4 9;
+ 
+param WorstCaseMin := 8;
+param DurationMax := 6;
+param AvailableFunds := 1000;
+param PercentageLimit := .4;
+ 
+model;
+""")
+ 
+#Choose a solver and solve.
+#This is a pure LP (continuous variables), so any LP solver works.
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+assert ampl.get_value("solve_result") == "solved", "Solve did not succeed"
+ 
+#Pull results back into Python
+allocation = ampl.get_variable("x").get_values().to_pandas()
+total_return = ampl.get_objective("Returns").value()
+ 
+print("\nDollars invested in each bond:")
+print(allocation)
+ 
+invested = allocation.iloc[:, 0].sum()
+print(f"\nTotal invested: {invested:,.2f}")
+print(f"Objective value (Returns): {total_return:,.2f}")
+ 
