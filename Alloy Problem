@@ -1,0 +1,76 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Aug 13 20:59:31 2026
+
+@author: joshyoung
+
+Alloy Blending problem
+Minimizaing the total cost of blending 5 alloys to hit target % cost Tin, Zinc, and lead,
+subject to percentage summing to 1
+"""
+
+from amplpy import AMPL 
+
+ampl = AMPL()
+
+#Defining the model
+ampl.eval(""" set Alloys;
+set Properties;
+ 
+var Percentage{Alloys} >=0;
+ 
+param Cost{Alloys};
+param Requirements{Properties};
+param Composition{Alloys, Properties};
+ 
+minimize TotalCost: sum{a in Alloys} Cost[a]*Percentage[a];
+subject to PropertyRequirements {p in Properties}: sum{a in Alloys} Percentage[a]*Composition[a,p] = Requirements[p];
+subject to Technical: sum{a in Alloys} Percentage[a] = 1;
+""") 
+
+#define the data (Note in the orginal file that was sent to me the Cost variable did not
+#match the .dat file
+
+ampl.eval("""
+data; 
+set Alloys := Alloy1 Alloy2 Alloy3 Alloy4 Alloy5;
+set Properties := Tin Zinc Lead;
+ 
+param Cost :=
+Alloy1 22
+Alloy2 20
+Alloy3 25
+Alloy4 24
+Alloy5 27;
+ 
+param Requirements :=
+Tin 40
+Zinc 35
+Lead 25;
+ 
+param Composition : Tin Zinc Lead :=
+Alloy1 60 10 30
+Alloy2 25 15 60
+Alloy3 45 45 10
+Alloy4 20 50 30
+Alloy5 50 40 10;
+""")
+
+#Using solver HiGHs did not have access to Gurobi at time of writing
+ampl.option["solver"] = "highs"
+ampl.solve()
+
+#checking the solver status
+assert ampl.get_value("solve_result") == "solved", "Solve did not succeed"
+ 
+#Pull results back into Python
+percentage = ampl.get_variable("Percentage").get_values().to_pandas()
+total_cost = ampl.get_objective("TotalCost").value()
+ 
+print("\nOptimal blend (% of each alloy):")
+print(percentage)
+print(f"\nTotal cost: {total_cost:.2f}")
+
+
+ 
