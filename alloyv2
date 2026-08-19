@@ -1,0 +1,62 @@
+# Alloy blending - Version 2
+# Same problem as Version 1 but using sets and params
+ 
+from amplpy import AMPL
+ 
+ampl = AMPL()
+ 
+# model
+ampl.eval("""
+set Alloys;
+set Properties;
+ 
+var x{Alloys} >= 0;
+# Define variables x1 . . . x5
+ 
+param CostPerPound{Alloys};
+param Composition{Alloys, Properties};
+param Requirements{Properties};
+ 
+minimize TotalCost: sum{a in Alloys} CostPerPound[a]*x[a];
+subject to PropertyRequirements {p in Properties}: sum{a in Alloys} x[a]* Composition[a,p] = Requirements[p];
+subject to Technical: sum{a in Alloys} x[a] = 1;
+""")
+ 
+# data - need "data;" first so AMPL knows these are values not declarations
+ampl.eval("""
+data;
+ 
+set Alloys := Alloy1 Alloy2 Alloy3 Alloy4 Alloy5;
+set Properties := Tin Zinc Lead;
+ 
+param CostPerPound :=
+Alloy1 22
+Alloy2 20
+Alloy3 25
+Alloy4 24
+Alloy5 27;
+ 
+param Requirements :=
+Tin 40
+Zinc 35
+Lead 25;
+ 
+param Composition : Tin Zinc Lead :=
+Alloy1 60 10 30
+Alloy2 25 15 60
+Alloy3 45 45 10
+Alloy4 20 50 30
+Alloy5 50 40 10;
+ 
+model;
+""")
+ 
+# solve
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+# print results
+print("\nBlend:")
+print(ampl.get_variable("x").get_values().to_pandas())
+ 
+print(f"\nTotal cost: {ampl.get_objective('TotalCost').value():.4f}")
