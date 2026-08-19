@@ -1,0 +1,64 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Tue Aug 18 19:55:52 2026
+
+@author: joshyoung
+"""
+
+import os
+from amplpy import AMPL
+ 
+# Resolve file paths relative to this script's own folder, so the files
+# are found regardless of Python's current working directory.
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+MODEL_FILE = os.path.join(SCRIPT_DIR, "SimpleGroceryOpt.mod")
+DATA_FILE = os.path.join(SCRIPT_DIR, "SimpleGroceryOpt.dat")
+ 
+for path in (MODEL_FILE, DATA_FILE):
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"Could not find {os.path.basename(path)}.\n"
+            f"Expected it here: {path}\n"
+            f"Put the .mod and .dat in the same folder as this script."
+        )
+ 
+ampl = AMPL()
+ 
+# 1. Read the model (structure), then the data (numbers).
+ampl.read(MODEL_FILE)
+ampl.read_data(DATA_FILE)
+ 
+# 2. Choose a solver and solve
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+assert ampl.get_value("solve_result") == "solved", "Solve did not succeed"
+ 
+# 3. Pull results back into Python
+servings = ampl.get_variable("x").get_values().to_pandas()
+total_cost = ampl.get_objective("TotalCost").value()
+ 
+
+bought = servings[servings.iloc[:, 0] > 1e-6].sort_values(
+    by=servings.columns[0], ascending=False
+)
+ 
+print(f"\nProducts purchased ({len(bought)} of {len(servings)}):")
+print(bought)
+print(f"\nTotal cost: {total_cost:,.2f}")
+ 
+# Show which nutrient minimums are binding, i.e. met exactly rather than
+# exceeded. Those are the constraints actually driving the solution.
+print("\nNutrient totals vs. minimums:")
+amtN = ampl.get_parameter("amtN").get_values().to_pandas()
+req_min = ampl.get_parameter("req_min").get_values().to_pandas()
+ 
+for i in ampl.get_set("Nutrients").members():
+    total = sum(
+        servings.loc[j].iloc[0] * amtN.loc[(j, i)].iloc[0]
+        for j in ampl.get_set("Products").members()
+    )
+    minimum = req_min.loc[i].iloc[0]
+    binding = "  <-- binding" if abs(total - minimum) < 1e-4 else ""
+    print(f"  {i:>5}: {total:10.2f}  (min {minimum:8.2f}){binding}")
