@@ -1,0 +1,58 @@
+from amplpy import AMPL
+ 
+ampl = AMPL()
+ 
+# model
+ampl.eval("""
+var x1F >= 0; #percentage of cargo i in compartment j, x_i,j
+var x2F >= 0;
+var x3F >= 0;
+var x4F >= 0;
+var x1C >= 0;
+var x2C >= 0;
+var x3C >= 0;
+var x4C >= 0;
+var x1B >= 0;
+var x2B >= 0;
+var x3B >= 0;
+var x4B >= 0;
+ 
+maximize Profit: 20*320*( x1F+ x1C + x1B) + 16*400*( x2F+ x2C + x2B) + 25*360*( x3F+ x3C + x3B)+ 13*400*( x4F+ x4C + x4B);
+ 
+#Weight Limits in Each Section
+subject to FrontW: 20*x1F + 16*x2F + 25*x3F + 13*x4F <=12;
+subject to CenterW: 20*x1C + 16*x2C + 25*x3C + 13*x4C <=18;
+subject to BackW: 20*x1B + 16*x2B + 25*x3B + 13*x4B <=10;
+ 
+#Space Limits in Each Section
+subject to FrontS: 500*x1F+  700*x2F + 600*x3F + 400*x4F <=7000;
+subject to CenterS:500*x1C+ 700*x2C + 600*x3C + 400*x4C <=9000;
+subject to BackS:500*x1B+ 700*x2B + 600*x3B + 400*x4B <=5000;
+ 
+#Ratio Constraints
+subject to FrontCenterRatio:(20*x1F+ 16*x2F + 25*x3F + 13*x4F)/12 -(20*x1C+ 16*x2C + 25*x3C + 13*x4C)/18 = 0;
+subject to CenterFrontRatio: (20*x1F+ 16*x2F + 25*x3F + 13*x4F)/12 - (20*x1B+ 16*x2B + 25*x3B + 13*x4B)/10 = 0;
+ 
+# Technology Limits
+subject to Cargo1: x1F + x1C + x1B  <= 1;
+subject to Cargo2: x2F + x2C + x2B  <= 1;
+subject to Cargo3: x3F + x3C + x3B  <= 1;
+subject to Cargo4: x4F + x4C + x4B  <= 1;
+""")
+ 
+# no data section needed, numbers are already in the model
+ 
+# solve
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+# print results
+print("\nFraction of each cargo loaded in each compartment:")
+for cargo in ["1", "2", "3", "4"]:
+    row = []
+    for comp in ["F", "C", "B"]:
+        val = ampl.get_variable(f"x{cargo}{comp}").value()
+        row.append(f"{comp}={val:.4f}")
+    print(f"  Cargo {cargo}: " + "  ".join(row))
+ 
+print(f"\nProfit: {ampl.get_objective('Profit').value():,.2f}")
