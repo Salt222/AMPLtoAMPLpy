@@ -1,0 +1,54 @@
+from amplpy import AMPL
+ 
+ampl = AMPL()
+ 
+# model
+ampl.eval("""
+set CARGO;
+set COMPARTMENT; # Front, Center, Back
+ 
+param WeightCap {COMPARTMENT};
+param SpaceCap {COMPARTMENT};
+ 
+param CargoWeight {CARGO};
+param CargoVolume {CARGO};
+param CargoProfitTon {CARGO};
+ 
+var Percentage{CARGO, COMPARTMENT} >=0;
+var CommonRatio >=0;
+ 
+maximize Profit: sum{i in CARGO, j in COMPARTMENT}  CargoWeight[i]*CargoProfitTon[i]*Percentage[i,j];
+ 
+subject to WeightLimit {j in COMPARTMENT}: sum{i in CARGO} CargoWeight[i] * Percentage[i,j] <= WeightCap[j];
+subject to SpaceLimit {j in COMPARTMENT}: sum{i in CARGO} CargoVolume[i]*Percentage[i,j] <= SpaceCap[j];
+subject to Ratio {j in COMPARTMENT}: sum{i in CARGO} CargoWeight[i]*Percentage[i,j] = CommonRatio * WeightCap[j];
+subject to Feasibility {i in CARGO}: sum{j in COMPARTMENT} Percentage[i,j] <= 1;
+""")
+ 
+# data
+ampl.eval("""
+data;
+ 
+set CARGO := 1 2 3 4;
+set COMPARTMENT := Front Center Back;
+ 
+param WeightCap := Front 12 Center 18 Back 10;
+param SpaceCap := Front 7000 Center 9000 Back 5000;
+ 
+param CargoWeight := 1 20 2 16 3 25 4 13;
+param CargoVolume := 1 500 2 700 3 600 4 400;
+param CargoProfitTon := 1 320 2 400 3 360 4 290;
+ 
+model;
+""")
+ 
+# solve
+ampl.option["solver"] = "highs"
+ampl.solve()
+ 
+# print results
+print("\nFraction of each cargo loaded in each compartment:")
+print(ampl.get_variable("Percentage").get_values().to_pandas())
+ 
+print(f"\nCommonRatio: {ampl.get_variable('CommonRatio').value():.4f}")
+print(f"Profit: {ampl.get_objective('Profit').value():,.2f}")
